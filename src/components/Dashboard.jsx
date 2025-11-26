@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import ProjectList from "./ProjectList";
 
 export default function Dashboard() {
     const [error, setError] = useState("");
@@ -8,6 +9,7 @@ export default function Dashboard() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState("");
+    const [currentProject, setCurrentProject] = useState(null);
 
     async function handleLogout() {
         setError("");
@@ -20,8 +22,13 @@ export default function Dashboard() {
     }
 
     async function triggerWebhook(type) {
+        if (!currentProject) {
+            setStatus("Por favor selecciona un proyecto primero.");
+            return;
+        }
+
         setLoading(true);
-        setStatus(`Triggering ${type} generation...`);
+        setStatus(`Triggering ${type} generation for "${currentProject.name}"...`);
 
         // TODO: Replace with actual webhook URLs
         const webhookUrl = "https://example.com/webhook/" + type;
@@ -31,10 +38,13 @@ export default function Dashboard() {
             await new Promise(resolve => setTimeout(resolve, 1500));
 
             // Uncomment below when real webhooks are ready
-            // const response = await fetch(webhookUrl, { method: 'POST' });
+            // const response = await fetch(webhookUrl, { 
+            //   method: 'POST',
+            //   body: JSON.stringify({ projectId: currentProject.id })
+            // });
             // if (!response.ok) throw new Error('Network response was not ok');
 
-            setStatus(`Success! ${type} generation started.`);
+            setStatus(`Success! ${type} generation started for "${currentProject.name}".`);
         } catch (err) {
             console.error(err);
             setStatus("Error triggering webhook.");
@@ -46,7 +56,14 @@ export default function Dashboard() {
     return (
         <div className="container">
             <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3rem" }}>
-                <h1>AI Studio</h1>
+                <div>
+                    <h1>AI Studio</h1>
+                    {currentProject && (
+                        <div style={{ color: "#94a3b8", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+                            Proyecto actual: <span style={{ color: "#3b82f6", fontWeight: "600" }}>{currentProject.name}</span>
+                        </div>
+                    )}
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
                     <span style={{ color: "#94a3b8" }}>{currentUser.email}</span>
                     <button onClick={handleLogout} className="btn btn-secondary">
@@ -57,6 +74,13 @@ export default function Dashboard() {
 
             {error && <div className="error-alert">{error}</div>}
 
+            {/* Project Management */}
+            <ProjectList
+                currentProject={currentProject}
+                onSelectProject={setCurrentProject}
+            />
+
+            {/* Generation Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "2rem" }}>
 
                 {/* Image Generation Card */}
@@ -66,7 +90,7 @@ export default function Dashboard() {
                         Create stunning visuals using our advanced AI model.
                     </p>
                     <button
-                        disabled={loading}
+                        disabled={loading || !currentProject}
                         onClick={() => triggerWebhook('image')}
                         className="btn btn-primary w-full"
                     >
@@ -81,7 +105,7 @@ export default function Dashboard() {
                         Turn text into captivating video content instantly.
                     </p>
                     <button
-                        disabled={loading}
+                        disabled={loading || !currentProject}
                         onClick={() => triggerWebhook('video')}
                         className="btn btn-primary w-full"
                         style={{ background: "linear-gradient(135deg, #ec4899, #8b5cf6)" }}
