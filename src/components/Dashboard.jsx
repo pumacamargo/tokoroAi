@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useEnvironment } from "../contexts/EnvironmentContext";
 import { useNavigate } from "react-router-dom";
 import ProjectList from "./ProjectList";
 import ProjectWorkflow from "./ProjectWorkflow";
@@ -7,6 +8,7 @@ import ProjectWorkflow from "./ProjectWorkflow";
 export default function Dashboard() {
     const [error, setError] = useState("");
     const { currentUser, logout } = useAuth();
+    const { environment, toggleEnvironment } = useEnvironment();
     const navigate = useNavigate();
     const [currentProject, setCurrentProject] = useState(null);
     const [showProjectView, setShowProjectView] = useState(false);
@@ -33,8 +35,33 @@ export default function Dashboard() {
 
     return (
         <div className="container">
-            <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", gap: "0.5rem" }}>
-                <h1 style={{ margin: 0, fontSize: "clamp(0.95rem, 4vw, 1.3rem)" }}>✨ Tokoro AI</h1>
+            <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                    <h1 style={{ margin: 0, fontSize: "clamp(0.95rem, 4vw, 1.3rem)" }}>✨ Tokoro AI</h1>
+                    <button
+                        onClick={toggleEnvironment}
+                        style={{
+                            padding: "0.35rem 0.6rem",
+                            borderRadius: "6px",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                            backgroundColor: environment === "test" ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)",
+                            color: environment === "test" ? "#f59e0b" : "#10b981",
+                            fontSize: "0.7rem",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                            transition: "all 0.3s",
+                            whiteSpace: "nowrap"
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = environment === "test" ? "rgba(245, 158, 11, 0.3)" : "rgba(16, 185, 129, 0.3)";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = environment === "test" ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)";
+                        }}
+                    >
+                        {environment === "test" ? "⚡ TEST" : "✓ PROD"}
+                    </button>
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>{currentUser.email}</span>
                     <button onClick={handleLogout} className="btn btn-secondary" style={{ padding: "0.35rem 0.7rem", fontSize: "0.75rem" }}>

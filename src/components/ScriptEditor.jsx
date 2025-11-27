@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 
-export default function ScriptEditor() {
+const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
     // Initialize fullText from localStorage or use default
     const initializeFullText = () => {
         const savedShots = localStorage.getItem("scriptShots");
@@ -25,6 +25,26 @@ export default function ScriptEditor() {
     const dragOverPositionRef = useRef(null); // Para evitar re-renders innecesarios
     const saveTimeoutRef = useRef(null);
     const lastSavedRef = useRef(fullText);
+
+    // Expose method to add generated content
+    useImperativeHandle(ref, () => ({
+        addGeneratedContent: (generatedText) => {
+            // Split generated text by newlines and add as new shots
+            const newShots = generatedText.split("\n").filter(shot => shot.trim() !== "");
+
+            if (newShots.length === 0) {
+                console.warn("No content to add");
+                return;
+            }
+
+            // Add to the end of current fullText
+            const updatedText = fullText ? fullText + "\n" + newShots.join("\n") : newShots.join("\n");
+            setFullText(updatedText);
+
+            // Update the last saved reference to trigger the save
+            lastSavedRef.current = updatedText;
+        }
+    }));
 
     // Dividir el texto en shots basado en saltos de línea - NO filtrar aquí
     const displayShots = fullText === "" ? [""] : fullText.split("\n");
@@ -445,4 +465,6 @@ export default function ScriptEditor() {
 
         </div>
     );
-}
+});
+
+export default ScriptEditor;

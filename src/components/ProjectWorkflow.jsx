@@ -1,5 +1,78 @@
 import React, { useState } from "react";
 import ScriptEditor from "./ScriptEditor";
+import AIGenerationForm from "./AIGenerationForm";
+
+// Define questions and templates for each step
+const STEP_CONFIGS = {
+    1: { // Script
+        label: "Script",
+        questions: [
+            { key: "task", label: "1. Task", placeholder: "Enter task description...", type: "textarea", defaultOpen: false },
+            { key: "numShots", label: "2. Num of Shots", placeholder: "Enter number of shots...", type: "text", defaultOpen: false },
+            { key: "topic", label: "3. Topic", placeholder: "Enter topic...", type: "text", highlight: true, defaultOpen: true },
+            { key: "example", label: "4. Example", placeholder: "Enter example...", type: "textarea", defaultOpen: false },
+            { key: "output", label: "5. Output", placeholder: "Enter output specifications...", type: "textarea", defaultOpen: false }
+        ],
+        defaultTemplates: [
+            { id: "script_1", name: "Short Form Video", data: { task: "Create engaging short form video script", numShots: "3-5", topic: "Entertainment", example: "TikTok style", output: "Video transcript with timestamps" } },
+            { id: "script_2", name: "Commercial", data: { task: "Write product commercial script", numShots: "1", topic: "Product Marketing", example: "30-second ad", output: "Professional voiceover script" } }
+        ]
+    },
+    2: { // Art Direction
+        label: "Art Direction",
+        questions: [
+            { key: "style", label: "1. Visual Style", placeholder: "Describe the visual style...", type: "textarea", defaultOpen: false },
+            { key: "colorPalette", label: "2. Color Palette", placeholder: "Define color palette...", type: "text", highlight: true, defaultOpen: true },
+            { key: "mood", label: "3. Mood & Tone", placeholder: "Describe mood and tone...", type: "textarea", defaultOpen: false },
+            { key: "reference", label: "4. Reference Images", placeholder: "Enter reference style...", type: "text", defaultOpen: false },
+            { key: "guidelines", label: "5. Brand Guidelines", placeholder: "Brand specific requirements...", type: "textarea", defaultOpen: false }
+        ],
+        defaultTemplates: [
+            { id: "art_1", name: "Modern Minimal", data: { style: "Clean and minimalist", colorPalette: "Blue, white, gray", mood: "Professional and modern", reference: "Flat design", guidelines: "Contemporary branding" } },
+            { id: "art_2", name: "Vibrant Colorful", data: { style: "Bold and vibrant", colorPalette: "Bright multi-color", mood: "Fun and energetic", reference: "Pop art style", guidelines: "Youth-oriented" } }
+        ]
+    },
+    3: { // Image Generation
+        label: "Image Generation",
+        questions: [
+            { key: "subject", label: "1. Subject", placeholder: "What should be in the image...", type: "textarea", defaultOpen: false },
+            { key: "resolution", label: "2. Resolution", placeholder: "Image resolution...", type: "text", highlight: true, defaultOpen: true },
+            { key: "style", label: "3. Art Style", placeholder: "Artistic style...", type: "text", defaultOpen: false },
+            { key: "lighting", label: "4. Lighting", placeholder: "Lighting conditions...", type: "text", defaultOpen: false },
+            { key: "requirements", label: "5. Special Requirements", placeholder: "Any specific requirements...", type: "textarea", defaultOpen: false }
+        ],
+        defaultTemplates: [
+            { id: "img_1", name: "Product Shot", data: { subject: "Professional product photography", resolution: "1080x1080", style: "Studio", lighting: "Bright studio lighting", requirements: "White background" } },
+            { id: "img_2", name: "Landscape", data: { subject: "Beautiful landscape", resolution: "1920x1080", style: "Photorealistic", lighting: "Golden hour", requirements: "Natural scenery" } }
+        ]
+    },
+    4: { // Video Generation
+        label: "Video Generation",
+        questions: [
+            { key: "description", label: "1. Video Description", placeholder: "Describe the video content...", type: "textarea", defaultOpen: false },
+            { key: "duration", label: "2. Duration", placeholder: "Video length in seconds...", type: "text", highlight: true, defaultOpen: true },
+            { key: "movement", label: "3. Movement & Animation", placeholder: "How should elements move...", type: "textarea", defaultOpen: false },
+            { key: "music", label: "4. Music & Sound", placeholder: "Audio requirements...", type: "text", defaultOpen: false },
+            { key: "transitions", label: "5. Transitions & Effects", placeholder: "Special effects needed...", type: "textarea", defaultOpen: false }
+        ],
+        defaultTemplates: [
+            { id: "vid_1", name: "Promotional Video", data: { description: "Product promotional video", duration: "30", movement: "Smooth pans and zooms", music: "Upbeat background music", transitions: "Fade transitions" } }
+        ]
+    },
+    5: { // SoundFX
+        label: "SoundFX",
+        questions: [
+            { key: "description", label: "1. Sound Description", placeholder: "Describe the sound effect...", type: "textarea", defaultOpen: false },
+            { key: "type", label: "2. Sound Type", placeholder: "Type of sound (ambient, impact, etc)...", type: "text", highlight: true, defaultOpen: true },
+            { key: "duration", label: "3. Duration", placeholder: "Duration in seconds...", type: "text", defaultOpen: false },
+            { key: "tone", label: "4. Tone & Mood", placeholder: "Sound tone and mood...", type: "text", defaultOpen: false },
+            { key: "intensity", label: "5. Intensity Level", placeholder: "Volume and intensity level...", type: "text", defaultOpen: false }
+        ],
+        defaultTemplates: [
+            { id: "sound_1", name: "Dramatic Impact", data: { description: "Dramatic sound effect", type: "Impact", duration: "2", tone: "Intense and powerful", intensity: "High" } }
+        ]
+    }
+};
 
 export default function ProjectWorkflow() {
     const [activeStep, setActiveStep] = useState(1);
@@ -10,6 +83,7 @@ export default function ProjectWorkflow() {
         4: false, // Video Generation
         5: false  // SoundFX
     });
+    const scriptEditorRef = React.useRef(null);
 
     const steps = [
         { id: 1, label: "Script", icon: "📝" },
@@ -26,6 +100,15 @@ export default function ProjectWorkflow() {
             [stepId]: !prev[stepId]
         }));
     };
+
+    const handleGeneratedContent = (generatedText) => {
+        // For step 1 (Script), pass the content to the ScriptEditor
+        if (activeStep === 1 && scriptEditorRef.current) {
+            scriptEditorRef.current.addGeneratedContent(generatedText);
+        }
+        // TODO: Add handlers for other steps
+    };
+
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -99,12 +182,16 @@ export default function ProjectWorkflow() {
             {/* SECCIÓN 2: GENERATE WITH AI */}
             {activeStep !== 6 && (
                 <>
-                    <div style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: "0.75rem"
-                    }}>
+                    <div
+                        onClick={() => toggleAiGeneration(activeStep)}
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginBottom: "0.75rem",
+                            cursor: "pointer"
+                        }}
+                    >
                         <h3 style={{ margin: 0, fontSize: "1rem" }}>Generate with AI</h3>
                         <input
                             type="checkbox"
@@ -120,56 +207,20 @@ export default function ProjectWorkflow() {
                     </div>
 
                     {aiGenerationEnabled[activeStep] && (
-                        <div className="card">
-                            <div style={{
-                                padding: "1.5rem",
-                                backgroundColor: "rgba(139, 92, 246, 0.1)",
-                                borderRadius: "8px",
-                                border: "1px solid rgba(139, 92, 246, 0.3)"
-                            }}>
-                                <div style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "1rem"
-                                }}>
-                                    <span style={{ fontSize: "2rem" }}>✨</span>
-                                    <div>
-                                        <div style={{ fontWeight: "600", color: "#f8fafc", fontSize: "1rem" }}>
-                                            {steps.find(s => s.id === activeStep)?.label}
-                                        </div>
-                                        <div style={{
-                                            fontSize: "0.9rem",
-                                            color: "#94a3b8",
-                                            marginTop: "0.25rem"
-                                        }}>
-                                            AI-powered content generation enabled
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Estado de confirmación */}
-                                <div style={{
-                                    marginTop: "1rem",
-                                    padding: "1rem",
-                                    backgroundColor: "rgba(34, 197, 94, 0.1)",
-                                    borderRadius: "6px",
-                                    borderLeft: "4px solid #10b981",
-                                    color: "#d1fae5"
-                                }}>
-                                    <div style={{ fontWeight: "600", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                                        <span>✓</span>
-                                        Ready to generate <strong>{steps.find(s => s.id === activeStep)?.label}</strong>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <AIGenerationForm
+                            stepId={activeStep}
+                            stepLabel={STEP_CONFIGS[activeStep].label}
+                            questions={STEP_CONFIGS[activeStep].questions}
+                            defaultTemplates={STEP_CONFIGS[activeStep].defaultTemplates}
+                            onGeneratedContent={handleGeneratedContent}
+                        />
                     )}
                 </>
             )}
 
             {/* SECCIÓN 3: DETALLES DEL PASO */}
             {activeStep === 1 ? (
-                <ScriptEditor />
+                <ScriptEditor ref={scriptEditorRef} />
             ) : (
                 <div className="card">
                     <h3 style={{ marginBottom: "1rem", fontSize: "1rem" }}>
