@@ -1,20 +1,26 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { saveShotsForProject, getProjectShots } from "../services/shotsService";
+import { auth } from "../firebase";
 
 const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
-    // Initialize fullText from localStorage or use default
+    const { projectId } = props;
+
+    // Initialize fullText from Firestore or use default
     const initializeFullText = () => {
+        const defaultText = "A tiny Pomeranian police officer in a perfectly fitted uniform gazing adoringly at a lost kitten. Extremely cute\nPomeranian police officer standing heroically amidst a backdrop of flaming hot dog carts and exploding donut shops, laser beams shooting out of his police badge. epic like a michae bay movie\nGiant text reading 'I BECAME A POLICE OFFICER!' with a shocked Pomeranian cop, surrounded by giant handcuffs, a massive donut, and overflowing bags of 'doggy treats.' A parody of a MrBeast thumbnail";
+
+        // Fallback to localStorage if Firestore is not available yet
         const savedShots = localStorage.getItem("scriptShots");
         if (savedShots) {
             try {
                 const shotsData = JSON.parse(savedShots);
-                // Reconstruct fullText by joining shot contents with newlines
                 return shotsData.map(shot => shot.content).join("\n");
             } catch (error) {
                 console.error("Error loading shots from localStorage:", error);
-                return "A tiny Pomeranian police officer in a perfectly fitted uniform gazing adoringly at a lost kitten. Extremely cute\nPomeranian police officer standing heroically amidst a backdrop of flaming hot dog carts and exploding donut shops, laser beams shooting out of his police badge. epic like a michae bay movie\nGiant text reading 'I BECAME A POLICE OFFICER!' with a shocked Pomeranian cop, surrounded by giant handcuffs, a massive donut, and overflowing bags of 'doggy treats.' A parody of a MrBeast thumbnail";
+                return defaultText;
             }
         }
-        return "A tiny Pomeranian police officer in a perfectly fitted uniform gazing adoringly at a lost kitten. Extremely cute\nPomeranian police officer standing heroically amidst a backdrop of flaming hot dog carts and exploding donut shops, laser beams shooting out of his police badge. epic like a michae bay movie\nGiant text reading 'I BECAME A POLICE OFFICER!' with a shocked Pomeranian cop, surrounded by giant handcuffs, a massive donut, and overflowing bags of 'doggy treats.' A parody of a MrBeast thumbnail";
+        return defaultText;
     };
 
     const [fullText, setFullText] = useState(initializeFullText());
@@ -25,6 +31,7 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
     const dragOverPositionRef = useRef(null); // Para evitar re-renders innecesarios
     const saveTimeoutRef = useRef(null);
     const lastSavedRef = useRef(fullText);
+    const [firestoreShots, setFirestoreShots] = useState([]);
 
     // Expose method to add generated content
     useImperativeHandle(ref, () => ({
@@ -33,16 +40,16 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
             const newShots = generatedText.split("\n").filter(shot => shot.trim() !== "");
 
             if (newShots.length === 0) {
-                console.warn("No content to add");
+                console.warn("No content to add from AI generation");
                 return;
             }
 
+            console.log("Adding", newShots.length, "generated shots to editor");
             // Add to the end of current fullText
             const updatedText = fullText ? fullText + "\n" + newShots.join("\n") : newShots.join("\n");
             setFullText(updatedText);
-
-            // Update the last saved reference to trigger the save
-            lastSavedRef.current = updatedText;
+            // Don't set lastSavedRef here - let the autosave useEffect detect the change
+            // The autosave useEffect will trigger because fullText changed
         }
     }));
 
@@ -79,6 +86,31 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
         }
     }, [pendingFocusIndex, shots.length]);
 
+    // Load shots from Firestore on mount or when projectId changes
+    useEffect(() => {
+        if (projectId && auth.currentUser) {
+            const loadShots = async () => {
+                try {
+                    console.log("Loading shots for projectId:", projectId);
+                    const shots = await getProjectShots(projectId);
+                    console.log("Loaded shots from Firestore:", shots.length, shots);
+                    setFirestoreShots(shots);
+                    if (shots.length > 0) {
+                        const fullTextFromShots = shots.map(shot => shot.content).join("\n");
+                        setFullText(fullTextFromShots);
+                        lastSavedRef.current = fullTextFromShots;
+                        console.log("Updated fullText with", shots.length, "shots");
+                    } else {
+                        console.log("No shots found in Firestore for projectId:", projectId);
+                    }
+                } catch (error) {
+                    console.error("Error loading shots from Firestore:", error);
+                }
+            };
+            loadShots();
+        }
+    }, [projectId]);
+
     // Autosave con debounce de 1 segundo
     useEffect(() => {
         if (fullText !== lastSavedRef.current) {
@@ -90,27 +122,51 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
             }
 
             // Establecer nuevo timeout para guardar después de 1 segundo
-            saveTimeoutRef.current = setTimeout(() => {
+            saveTimeoutRef.current = setTimeout(async () => {
                 setSaveStatus("saving");
 
-                // Guardar en localStorage
-                const shots = displayShots;
-                const shotsData = shots.map((shot, index) => ({
-                    id: `shot_${index}`,
-                    index: index,
-                    content: shot,
-                    images: [],
-                    videos: [],
-                    savedAt: new Date().toISOString()
-                }));
+                try {
+                    // Guardar en Firestore si projectId existe
+                    if (projectId && auth.currentUser) {
+                        // Filter out empty shots and map to data structure
+                        const nonEmptyShots = displayShots.filter(shot => shot.trim() !== "");
+                        const shotsData = nonEmptyShots.map((shot, index) => ({
+                            content: shot,
+                            script: shot,
+                            artDirection: "",
+                            images: [],
+                            videos: [],
+                            sounds: [],
+                            order: index
+                        }));
 
-                localStorage.setItem("scriptShots", JSON.stringify(shotsData));
-                lastSavedRef.current = fullText;
+                        console.log("Saving", shotsData.length, "shots to Firestore");
+                        await saveShotsForProject(projectId, shotsData);
+                        console.log("Successfully saved shots to Firestore");
+                    }
 
-                // Mostrar "saved" por 2 segundos
-                setTimeout(() => {
-                    setSaveStatus("saved");
-                }, 500);
+                    // También guardar en localStorage como backup
+                    const shots = displayShots;
+                    const shotsData = shots.map((shot, index) => ({
+                        id: `shot_${index}`,
+                        index: index,
+                        content: shot,
+                        images: [],
+                        videos: [],
+                        savedAt: new Date().toISOString()
+                    }));
+                    localStorage.setItem("scriptShots", JSON.stringify(shotsData));
+
+                    lastSavedRef.current = fullText;
+
+                    // Mostrar "saved" por 2 segundos
+                    setTimeout(() => {
+                        setSaveStatus("saved");
+                    }, 500);
+                } catch (error) {
+                    console.error("Error saving shots:", error);
+                    setSaveStatus("unsaved");
+                }
             }, 1000);
         }
 
@@ -119,7 +175,7 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
                 clearTimeout(saveTimeoutRef.current);
             }
         };
-    }, [fullText, displayShots]);
+    }, [fullText, displayShots, projectId]);
 
     const handleKeyDown = (e, index) => {
         // Si presionas Enter al final de un textarea

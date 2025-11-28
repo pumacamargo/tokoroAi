@@ -1,0 +1,743 @@
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { saveAssetsForProject, getProjectAssets, saveArtDirectionStyle, getArtDirectionStyle } from "../services/assetsService";
+import { uploadAndUpdateAssetImage } from "../services/assetImagesService";
+import { auth } from "../firebase";
+
+const AssetDirectionEditor = forwardRef(function AssetDirectionEditor(props, ref) {
+    const { projectId } = props;
+
+    const initializeFullText = () => {
+        const defaultText = "Professional product photography studio setup with soft box lighting\nBold vibrant colors with energetic mood for youth market\nMinimalist aesthetic with clean lines and white space";
+        const savedAssets = localStorage.getItem("artDirectionAssets");
+        if (savedAssets) {
+            try {
+                const assetsData = JSON.parse(savedAssets);
+                return assetsData.map(asset => asset.content).join("\n");
+            } catch (error) {
+                console.error("Error loading assets from localStorage:", error);
+                return defaultText;
+            }
+        }
+        return defaultText;
+    };
+
+    const [fullText, setFullText] = useState(initializeFullText());
+    const [currentAssetIndex, setCurrentAssetIndex] = useState(0);
+    const [saveStatus, setSaveStatus] = useState("saved");
+    const [draggedIndex, setDraggedIndex] = useState(null);
+    const [dragOverPosition, setDragOverPosition] = useState(null);
+    const dragOverPositionRef = useRef(null);
+    const saveTimeoutRef = useRef(null);
+    const lastSavedRef = useRef(fullText);
+    const [firestoreAssets, setFirestoreAssets] = useState([]);
+    const [artDirectionStyle, setArtDirectionStyle] = useState("");
+    const [styleTimeout, setStyleTimeout] = useState(null);
+    const [styleSaveStatus, setStyleSaveStatus] = useState("saved");
+    const lastStyleRef = useRef("");
+    const [assetImages, setAssetImages] = useState({});
+    const [uploadingAssets, setUploadingAssets] = useState({});
+    const fileInputRefs = useRef({});
+
+    const handleDragStart = (e, index) => {
+        setDraggedIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragEnd = (e) => {
+        setDraggedIndex(null);
+        setDragOverPosition(null);
+        dragOverPositionRef.current = null;
+    };
+
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const midpoint = rect.height / 2;
+        const offsetY = e.clientY - rect.top;
+
+        const newPosition = offsetY < midpoint ? "before" : "after";
+        const newState = { index, position: newPosition };
+
+        if (
+            !dragOverPositionRef.current ||
+            dragOverPositionRef.current.index !== newState.index ||
+            dragOverPositionRef.current.position !== newState.position
+        ) {
+            dragOverPositionRef.current = newState;
+            setDragOverPosition(newState);
+        }
+    };
+
+    const handleDragLeave = (e) => {
+        if (e.relatedTarget === null || !e.currentTarget.contains(e.relatedTarget)) {
+            setDragOverPosition(null);
+            dragOverPositionRef.current = null;
+        }
+    };
+
+    const handleDrop = (e, dropIndex) => {
+        e.preventDefault();
+        if (draggedIndex === null || dragOverPosition === null) {
+            setDraggedIndex(null);
+            setDragOverPosition(null);
+            return;
+        }
+
+        const currentLines = fullText === "" ? [""] : fullText.split("\n");
+        const draggedLine = currentLines[draggedIndex];
+
+        let newDropIndex = dragOverPosition.position === "before" ? dropIndex : dropIndex + 1;
+
+        if (draggedIndex < newDropIndex) {
+            newDropIndex -= 1;
+        }
+
+        if (draggedIndex === newDropIndex) {
+            setDraggedIndex(null);
+            setDragOverPosition(null);
+            return;
+        }
+
+        currentLines.splice(draggedIndex, 1);
+        currentLines.splice(newDropIndex, 0, draggedLine);
+
+        setFullText(currentLines.join("\n"));
+        setCurrentAssetIndex(newDropIndex);
+        setDraggedIndex(null);
+        setDragOverPosition(null);
+    };
+
+    useImperativeHandle(ref, () => ({
+        addGeneratedContent: (generatedText) => {
+            const newAssets = generatedText.split("\n").filter(asset => asset.trim() !== "");
+            if (newAssets.length === 0) {
+                console.warn("No content to add from AI generation");
+                return;
+            }
+            console.log("Adding", newAssets.length, "generated assets to editor");
+            const updatedText = fullText ? fullText + "\n" + newAssets.join("\n") : newAssets.join("\n");
+            setFullText(updatedText);
+        }
+    }));
+
+    const displayAssets = fullText === "" ? [""] : fullText.split("\n");
+    const assets = displayAssets.filter(asset => asset.trim() !== "");
+
+    const handleAssetChange = (index, newContent) => {
+        const currentLines = fullText === "" ? [""] : fullText.split("\n");
+        currentLines[index] = newContent;
+        setFullText(currentLines.join("\n"));
+    };
+
+    const textareaRefs = React.useRef([]);
+    const [pendingFocusIndex, setPendingFocusIndex] = useState(null);
+
+    useEffect(() => {
+        if (pendingFocusIndex !== null && textareaRefs.current[pendingFocusIndex]) {
+            textareaRefs.current[pendingFocusIndex].focus();
+            textareaRefs.current[pendingFocusIndex].setSelectionRange(0, 0);
+            setPendingFocusIndex(null);
+        }
+    }, [pendingFocusIndex, assets.length]);
+
+    useEffect(() => {
+        if (projectId && auth.currentUser) {
+            const loadAssetsAndStyle = async () => {
+                try {
+                    console.log("Loading assets for projectId:", projectId);
+                    const assets = await getProjectAssets(projectId);
+                    console.log("Loaded assets from Firestore:", assets.length, assets);
+                    setFirestoreAssets(assets);
+                    if (assets.length > 0) {
+                        const fullTextFromAssets = assets.map(asset => asset.content).join("\n");
+                        setFullText(fullTextFromAssets);
+                        lastSavedRef.current = fullTextFromAssets;
+                        console.log("Updated fullText with", assets.length, "assets");
+                    } else {
+                        console.log("No assets found in Firestore for projectId:", projectId);
+                    }
+
+                    const style = await getArtDirectionStyle(projectId);
+                    setArtDirectionStyle(style);
+                    lastStyleRef.current = style;
+                    setStyleSaveStatus("saved");
+                    console.log("Loaded art direction style:", style);
+                } catch (error) {
+                    console.error("Error loading assets or style from Firestore:", error);
+                }
+            };
+            loadAssetsAndStyle();
+        }
+    }, [projectId]);
+
+    useEffect(() => {
+        if (fullText !== lastSavedRef.current) {
+            setSaveStatus("unsaved");
+
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+
+            saveTimeoutRef.current = setTimeout(async () => {
+                setSaveStatus("saving");
+
+                try {
+                    if (projectId && auth.currentUser) {
+                        const nonEmptyAssets = displayAssets.filter(asset => asset.trim() !== "");
+                        const assetsData = nonEmptyAssets.map((asset, index) => ({
+                            content: asset,
+                            visualStyle: "",
+                            colorPalette: "",
+                            mood: "",
+                            references: [],
+                            order: index
+                        }));
+
+                        console.log("Saving", assetsData.length, "assets to Firestore");
+                        await saveAssetsForProject(projectId, assetsData);
+                        console.log("Successfully saved assets to Firestore");
+                    }
+
+                    const assets = displayAssets;
+                    const assetsData = assets.map((asset, index) => ({
+                        id: `asset_${index}`,
+                        index: index,
+                        content: asset,
+                        savedAt: new Date().toISOString()
+                    }));
+                    localStorage.setItem("artDirectionAssets", JSON.stringify(assetsData));
+
+                    lastSavedRef.current = fullText;
+
+                    setTimeout(() => {
+                        setSaveStatus("saved");
+                    }, 500);
+                } catch (error) {
+                    console.error("Error saving assets:", error);
+                    setSaveStatus("unsaved");
+                }
+            }, 1000);
+        }
+
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, [fullText, displayAssets, projectId]);
+
+    useEffect(() => {
+        if (artDirectionStyle !== lastStyleRef.current) {
+            setStyleSaveStatus("unsaved");
+
+            if (styleTimeout) {
+                clearTimeout(styleTimeout);
+            }
+
+            if (artDirectionStyle) {
+                const newTimeout = setTimeout(async () => {
+                    setStyleSaveStatus("saving");
+                    try {
+                        console.log("Saving art direction style to Firestore");
+                        await saveArtDirectionStyle(projectId, artDirectionStyle);
+                        console.log("Successfully saved art direction style");
+                        lastStyleRef.current = artDirectionStyle;
+
+                        setTimeout(() => {
+                            setStyleSaveStatus("saved");
+                        }, 500);
+                    } catch (error) {
+                        console.error("Error saving art direction style:", error);
+                        setStyleSaveStatus("unsaved");
+                    }
+                }, 1000);
+
+                setStyleTimeout(newTimeout);
+            }
+        }
+
+        return () => {
+            if (styleTimeout) {
+                clearTimeout(styleTimeout);
+            }
+        };
+    }, [artDirectionStyle, projectId]);
+
+    const handleUploadImage = async (index, file) => {
+        if (!file) return;
+
+        try {
+            setUploadingAssets(prev => ({ ...prev, [index]: true }));
+            console.log("Starting upload for asset", index);
+
+            const imageUrl = await uploadAndUpdateAssetImage(projectId, `asset_${index}`, file);
+
+            setAssetImages(prev => ({ ...prev, [index]: imageUrl }));
+            console.log("Image uploaded successfully:", imageUrl);
+        } catch (error) {
+            console.error("Error uploading image:", error);
+            alert(`Error uploading image: ${error.message}`);
+        } finally {
+            setUploadingAssets(prev => ({ ...prev, [index]: false }));
+            // Reset file input
+            if (fileInputRefs.current[index]) {
+                fileInputRefs.current[index].value = "";
+            }
+        }
+    };
+
+    const handleUploadClick = (index) => {
+        if (fileInputRefs.current[index]) {
+            fileInputRefs.current[index].click();
+        }
+    };
+
+    const handleFileChange = (index, event) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            handleUploadImage(index, file);
+        }
+    };
+
+    const handleKeyDown = (e, index) => {
+        if (e.key === "Enter" && e.ctrlKey === false) {
+            const isAtEnd = e.currentTarget.selectionStart === e.currentTarget.value.length;
+            if (isAtEnd) {
+                e.preventDefault();
+                const currentLines = fullText === "" ? [""] : fullText.split("\n");
+                currentLines.splice(index + 1, 0, "");
+                setFullText(currentLines.join("\n"));
+                setCurrentAssetIndex(index + 1);
+                setPendingFocusIndex(index + 1);
+            }
+        }
+
+        if ((e.key === "ArrowRight" || e.key === "ArrowDown") && index < displayAssets.length - 1) {
+            const isAtEnd = e.currentTarget.selectionStart === e.currentTarget.value.length;
+            if (isAtEnd) {
+                e.preventDefault();
+                setCurrentAssetIndex(index + 1);
+                setPendingFocusIndex(index + 1);
+            }
+        }
+
+        if ((e.key === "ArrowLeft" || e.key === "ArrowUp") && index > 0) {
+            const isAtStart = e.currentTarget.selectionStart === 0;
+            if (isAtStart) {
+                e.preventDefault();
+                setCurrentAssetIndex(index - 1);
+
+                setTimeout(() => {
+                    if (textareaRefs.current[index - 1]) {
+                        const previousTextarea = textareaRefs.current[index - 1];
+                        previousTextarea.focus();
+                        previousTextarea.setSelectionRange(previousTextarea.value.length, previousTextarea.value.length);
+                    }
+                }, 0);
+            }
+        }
+
+        if (e.key === "Backspace" && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) {
+            if (index > 0) {
+                e.preventDefault();
+                const currentLines = fullText.split("\n");
+                const previousLength = currentLines[index - 1].length;
+                currentLines[index - 1] = currentLines[index - 1] + currentLines[index];
+                currentLines.splice(index, 1);
+                setFullText(currentLines.join("\n"));
+                setCurrentAssetIndex(index - 1);
+
+                setTimeout(() => {
+                    if (textareaRefs.current[index - 1]) {
+                        textareaRefs.current[index - 1].focus();
+                        textareaRefs.current[index - 1].setSelectionRange(previousLength, previousLength);
+                    }
+                }, 0);
+            }
+        }
+    };
+
+    const handleDiscard = () => {
+        if (window.confirm("Are you sure you want to discard all assets? This cannot be undone.")) {
+            setFullText("");
+            setCurrentAssetIndex(0);
+            setTimeout(() => {
+                if (textareaRefs.current[0]) {
+                    textareaRefs.current[0].focus();
+                }
+            }, 0);
+        }
+    };
+
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            {/* Art Direction Style section - HEADER */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Art Direction Style</h3>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    {styleSaveStatus === "saving" && (
+                        <span style={{ color: "#f59e0b", fontSize: "0.8rem", fontStyle: "italic" }}>
+                            💾 Saving...
+                        </span>
+                    )}
+                    {styleSaveStatus === "saved" && (
+                        <span style={{ color: "#10b981", fontSize: "0.8rem" }}>
+                            ✓ Saved
+                        </span>
+                    )}
+                    {styleSaveStatus === "unsaved" && (
+                        <span style={{ color: "#ef4444", fontSize: "0.8rem" }}>
+                            ● Unsaved
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* Art Direction Style CARD */}
+            <div className="card">
+                <textarea
+                    value={artDirectionStyle}
+                    onChange={(e) => setArtDirectionStyle(e.target.value)}
+                    placeholder="Describe the overall art direction and visual approach..."
+                    style={{
+                        width: "100%",
+                        padding: "0.75rem",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(59, 130, 246, 0.2)",
+                        backgroundColor: "rgba(15, 23, 42, 0.8)",
+                        color: "#f8fafc",
+                        fontFamily: "monospace",
+                        fontSize: "0.9rem",
+                        lineHeight: "1.4",
+                        resize: "vertical",
+                        minHeight: "100px",
+                        boxSizing: "border-box",
+                        transition: "all 0.3s"
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = "rgba(15, 23, 42, 0.95)";
+                        e.currentTarget.style.borderColor = "rgba(59, 130, 246, 0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "rgba(15, 23, 42, 0.8)";
+                        e.currentTarget.style.borderColor = "rgba(59, 130, 246, 0.2)";
+                    }}
+                    onFocus={(e) => {
+                        e.currentTarget.style.borderColor = "rgba(59, 130, 246, 0.5)";
+                        e.currentTarget.style.backgroundColor = "rgba(59, 130, 246, 0.1)";
+                    }}
+                    onBlur={(e) => {
+                        e.currentTarget.style.borderColor = "rgba(59, 130, 246, 0.2)";
+                        e.currentTarget.style.backgroundColor = "rgba(15, 23, 42, 0.8)";
+                    }}
+                />
+            </div>
+
+            {/* Assets editor HEADER */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Art Direction Assets</h3>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
+                            Asset {currentAssetIndex + 1} of {displayAssets.length}
+                        </span>
+                        {saveStatus === "saving" && (
+                            <span style={{ color: "#f59e0b", fontSize: "0.8rem", fontStyle: "italic" }}>
+                                💾 Saving...
+                            </span>
+                        )}
+                        {saveStatus === "saved" && (
+                            <span style={{ color: "#10b981", fontSize: "0.8rem" }}>
+                                ✓ Saved
+                            </span>
+                        )}
+                        {saveStatus === "unsaved" && (
+                            <span style={{ color: "#ef4444", fontSize: "0.8rem" }}>
+                                ● Unsaved
+                            </span>
+                        )}
+                    </div>
+                    <button
+                        onClick={handleDiscard}
+                        style={{
+                            padding: "0.5rem 0.75rem",
+                            backgroundColor: "rgba(239, 68, 68, 0.2)",
+                            color: "#ef4444",
+                            border: "1px solid rgba(239, 68, 68, 0.3)",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            fontSize: "0.8rem",
+                            fontWeight: "600",
+                            transition: "all 0.3s"
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = "rgba(239, 68, 68, 0.3)";
+                            e.target.style.color = "#fca5a5";
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
+                            e.target.style.color = "#ef4444";
+                        }}
+                    >
+                        🗑️ Discard
+                    </button>
+                </div>
+            </div>
+
+            {/* Assets editor CARD */}
+            <div
+                className="card"
+                style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.75rem"
+                }}
+                onDragLeave={handleDragLeave}
+            >
+                {displayAssets.map((asset, index) => (
+                    <div key={index}>
+                        {draggedIndex !== null && dragOverPosition?.index === index && dragOverPosition?.position === "before" && (
+                            <div style={{
+                                height: "3px",
+                                backgroundColor: "#3b82f6",
+                                borderRadius: "2px",
+                                marginBottom: "0.5rem",
+                                boxShadow: "0 0 8px rgba(59, 130, 246, 0.6)"
+                            }} />
+                        )}
+
+                        <div
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, index)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDrop={(e) => handleDrop(e, index)}
+                            style={{
+                                display: "flex",
+                                gap: "0.75rem",
+                                alignItems: "flex-start",
+                                opacity: draggedIndex === index ? 0.5 : 1,
+                                borderRadius: "8px",
+                                transition: "all 0.2s",
+                                padding: "0.75rem",
+                                backgroundColor: index === currentAssetIndex
+                                    ? "rgba(59, 130, 246, 0.1)"
+                                    : "rgba(15, 23, 42, 0.5)",
+                                border: index === currentAssetIndex
+                                    ? "1px solid rgba(59, 130, 246, 0.3)"
+                                    : "1px solid rgba(59, 130, 246, 0.1)"
+                            }}
+                        >
+                            {/* Drag handle */}
+                            <div
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    minWidth: "1.5rem",
+                                    cursor: "grab",
+                                    color: "#64748b",
+                                    fontSize: "1.2rem",
+                                    padding: "0rem",
+                                    userSelect: "none",
+                                    marginTop: "0.5rem"
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = "#94a3b8";
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = "#64748b";
+                                }}
+                            >
+                                ⋮
+                            </div>
+
+                            {/* Thumbnail */}
+                            <div
+                                onClick={() => handleUploadClick(index)}
+                                style={{
+                                    minWidth: "120px",
+                                    width: "120px",
+                                    height: "100px",
+                                    borderRadius: "6px",
+                                    overflow: "hidden",
+                                    backgroundColor: "rgba(15, 23, 42, 0.8)",
+                                    border: "1px solid rgba(59, 130, 246, 0.2)",
+                                    cursor: "pointer",
+                                    position: "relative",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    transition: "all 0.3s"
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (!assetImages[index]) {
+                                        e.currentTarget.style.borderColor = "rgba(59, 130, 246, 0.5)";
+                                        e.currentTarget.style.backgroundColor = "rgba(15, 23, 42, 0.95)";
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (!assetImages[index]) {
+                                        e.currentTarget.style.borderColor = "rgba(59, 130, 246, 0.2)";
+                                        e.currentTarget.style.backgroundColor = "rgba(15, 23, 42, 0.8)";
+                                    }
+                                }}
+                            >
+                                <img
+                                    src={assetImages[index] || "https://wpmedia-lj.s3.amazonaws.com/wp-content/uploads/2023/10/Placeholder_01.jpg"}
+                                    alt={`Asset ${index + 1}`}
+                                    style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: "cover"
+                                    }}
+                                />
+                                {uploadingAssets[index] && (
+                                    <div
+                                        style={{
+                                            position: "absolute",
+                                            inset: 0,
+                                            backgroundColor: "rgba(0, 0, 0, 0.6)",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            color: "#fff",
+                                            fontSize: "0.75rem",
+                                            fontWeight: "600"
+                                        }}
+                                    >
+                                        Uploading...
+                                    </div>
+                                )}
+                                <input
+                                    ref={(el) => (fileInputRefs.current[index] = el)}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => handleFileChange(index, e)}
+                                    style={{ display: "none" }}
+                                />
+                            </div>
+
+                            {/* Text content */}
+                            <div
+                                style={{
+                                    flex: 1,
+                                    display: "flex",
+                                    flexDirection: "column"
+                                }}
+                            >
+                                <textarea
+                                    ref={(el) => (textareaRefs.current[index] = el)}
+                                    value={asset}
+                                    onChange={(e) => handleAssetChange(index, e.target.value)}
+                                    onClick={() => setCurrentAssetIndex(index)}
+                                    onKeyDown={(e) => handleKeyDown(e, index)}
+                                    placeholder="✍️ Describe your art direction here"
+                                    style={{
+                                        padding: "0.75rem",
+                                        backgroundColor: "transparent",
+                                        border: "none",
+                                        cursor: "text",
+                                        color: "#f8fafc",
+                                        fontFamily: "monospace",
+                                        fontSize: "0.9rem",
+                                        lineHeight: "1.4",
+                                        resize: "none",
+                                        minHeight: "100px",
+                                        overflow: "hidden",
+                                        outline: "none",
+                                        fontWeight: "500"
+                                    }}
+                                />
+                            </div>
+
+                            {/* Action buttons */}
+                            <div
+                                style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "0.5rem",
+                                    minWidth: "140px"
+                                }}
+                            >
+                                <button
+                                    onClick={() => handleUploadClick(index)}
+                                    disabled={uploadingAssets[index]}
+                                    style={{
+                                        padding: "0.6rem 1rem",
+                                        backgroundColor: uploadingAssets[index]
+                                            ? "rgba(139, 92, 246, 0.1)"
+                                            : "rgba(139, 92, 246, 0.2)",
+                                        color: uploadingAssets[index] ? "#7c3aed" : "#a78bfa",
+                                        border: uploadingAssets[index]
+                                            ? "1px solid rgba(139, 92, 246, 0.2)"
+                                            : "1px solid rgba(139, 92, 246, 0.4)",
+                                        borderRadius: "6px",
+                                        cursor: uploadingAssets[index] ? "not-allowed" : "pointer",
+                                        fontSize: "0.8rem",
+                                        fontWeight: "600",
+                                        transition: "all 0.3s",
+                                        whiteSpace: "nowrap",
+                                        opacity: uploadingAssets[index] ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!uploadingAssets[index]) {
+                                            e.target.style.backgroundColor = "rgba(139, 92, 246, 0.3)";
+                                            e.target.style.borderColor = "rgba(139, 92, 246, 0.6)";
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (!uploadingAssets[index]) {
+                                            e.target.style.backgroundColor = "rgba(139, 92, 246, 0.2)";
+                                            e.target.style.borderColor = "rgba(139, 92, 246, 0.4)";
+                                        }
+                                    }}
+                                >
+                                    {uploadingAssets[index] ? "⏳ Uploading..." : "📤 Upload"}
+                                </button>
+                                <button
+                                    style={{
+                                        padding: "0.6rem 1rem",
+                                        backgroundColor: "rgba(99, 102, 241, 0.2)",
+                                        color: "#818cf8",
+                                        border: "1px solid rgba(99, 102, 241, 0.4)",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                        fontSize: "0.8rem",
+                                        fontWeight: "600",
+                                        transition: "all 0.3s",
+                                        whiteSpace: "nowrap"
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.backgroundColor = "rgba(99, 102, 241, 0.3)";
+                                        e.target.style.borderColor = "rgba(99, 102, 241, 0.6)";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.backgroundColor = "rgba(99, 102, 241, 0.2)";
+                                        e.target.style.borderColor = "rgba(99, 102, 241, 0.4)";
+                                    }}
+                                >
+                                    ✨ Generate AI
+                                </button>
+                            </div>
+                        </div>
+
+                        {draggedIndex !== null && dragOverPosition?.index === index && dragOverPosition?.position === "after" && (
+                            <div style={{
+                                height: "3px",
+                                backgroundColor: "#3b82f6",
+                                borderRadius: "2px",
+                                marginTop: "0.5rem",
+                                boxShadow: "0 0 8px rgba(59, 130, 246, 0.6)"
+                            }} />
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+});
+
+export default AssetDirectionEditor;

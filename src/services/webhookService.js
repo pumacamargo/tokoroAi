@@ -2,23 +2,23 @@
 const WEBHOOKS = {
     script: {
         production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genScript",
-        test: "https://n8n.lemonsushi.com/webhook/tokoroAi_genScript_test"
+        test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genScript"
     },
     artDirection: {
         production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genArtDirection",
-        test: "https://n8n.lemonsushi.com/webhook/tokoroAi_genArtDirection_test"
+        test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genArtDirection"
     },
     imageGeneration: {
         production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genImages",
-        test: "https://n8n.lemonsushi.com/webhook/tokoroAi_genImages_test"
+        test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genImages"
     },
     videoGeneration: {
         production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genVideo",
-        test: "https://n8n.lemonsushi.com/webhook/tokoroAi_genVideo_test"
+        test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genVideo"
     },
     soundFX: {
         production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genSound",
-        test: "https://n8n.lemonsushi.com/webhook/tokoroAi_genSound_test"
+        test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genSound"
     }
 };
 
@@ -78,7 +78,35 @@ export const sendToWebhook = async (stepId, formData, environment = "production"
             throw new Error(`Webhook request failed with status ${response.status}`);
         }
 
-        const result = await response.json();
+        let result = await response.json();
+
+        // Process the result to extract and clean the output text
+        let outputText = "";
+
+        if (Array.isArray(result) && result.length > 0) {
+            // If result is an array, get the output from the first element
+            const firstItem = result[0];
+            if (firstItem.output) {
+                outputText = firstItem.output;
+            }
+        } else if (result.output) {
+            // If result has output property directly
+            outputText = result.output;
+        } else if (typeof result === "string") {
+            // If result is already a string
+            outputText = result;
+        } else if (result.text) {
+            // If result has text property
+            outputText = result.text;
+        }
+
+        // Clean up the text: ensure proper line breaks and trim
+        if (outputText) {
+            // Replace escaped newlines with actual newlines
+            outputText = outputText.replace(/\\n/g, "\n").trim();
+            return outputText;
+        }
+
         return result;
     } catch (error) {
         console.error("Error sending to webhook:", error);

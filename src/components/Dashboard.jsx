@@ -100,7 +100,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* Workflow Section */}
-                    <ProjectWorkflow />
+                    <ProjectWorkflow projectId={currentProject.id} />
                 </>
             )}
         </div>

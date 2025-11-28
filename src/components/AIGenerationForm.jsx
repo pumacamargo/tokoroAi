@@ -23,12 +23,13 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
     const [selectedTemplate, setSelectedTemplate] = useState(null);
     const [newTemplateName, setNewTemplateName] = useState("");
     const [showSaveTemplate, setShowSaveTemplate] = useState(false);
-    const [expandedTemplates, setExpandedTemplates] = useState(true);
+    const [expandedTemplates, setExpandedTemplates] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [savingTemplate, setSavingTemplate] = useState(false);
     const [generatingAI, setGeneratingAI] = useState(false);
     const [generateError, setGenerateError] = useState(null);
+    const [advancedMode, setAdvancedMode] = useState(false);
 
     // Subscribe to templates from Firestore and initialize defaults
     useEffect(() => {
@@ -174,7 +175,21 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
                             marginBottom: "0.75rem"
                         }}
                     >
-                        <h4 style={{ margin: 0, fontSize: "0.95rem" }}>Templates</h4>
+                        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                            <h4 style={{ margin: 0, fontSize: "0.95rem" }}>Templates</h4>
+                            {selectedTemplate && (
+                                <span style={{
+                                    fontSize: "0.85rem",
+                                    color: "#10b981",
+                                    fontWeight: "500",
+                                    padding: "0.25rem 0.5rem",
+                                    borderRadius: "4px",
+                                    backgroundColor: "rgba(16, 185, 129, 0.2)"
+                                }}>
+                                    Active: {templates.find(t => t.id === selectedTemplate)?.name || "Unknown"}
+                                </span>
+                            )}
+                        </div>
                         <span style={{ fontSize: "1.2rem" }}>{expandedTemplates ? "▼" : "▶"}</span>
                     </div>
 
@@ -313,30 +328,24 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
 
                 {/* Questions Section */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                    {questions.map(question => (
-                        <div key={question.key}>
-                            <div
-                                onClick={() => toggleQuestion(question.key)}
-                                style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    cursor: "pointer",
-                                    padding: "0.5rem",
-                                    borderRadius: "6px",
-                                    backgroundColor: question.highlight
-                                        ? "rgba(139, 92, 246, 0.35)"
-                                        : "rgba(59, 130, 246, 0.1)",
-                                    marginBottom: expandedQuestions[question.key] ? "0.5rem" : 0
-                                }}
-                            >
-                                <span style={{ fontWeight: "500" }}>{question.label}</span>
-                                <span style={{ fontSize: "1.2rem" }}>
-                                    {expandedQuestions[question.key] ? "▼" : "▶"}
-                                </span>
-                            </div>
-                            {expandedQuestions[question.key] && (
-                                question.type === "textarea" ? (
+                    {questions.map(question => {
+                        // Hide Task, Example, Output unless advanced mode is on
+                        const hiddenInBasicMode = ["task", "example", "output"].includes(question.key);
+                        if (hiddenInBasicMode && !advancedMode) {
+                            return null;
+                        }
+
+                        return (
+                            <div key={question.key}>
+                                <label style={{
+                                    display: "block",
+                                    padding: "0.5rem 0",
+                                    fontWeight: "500",
+                                    fontSize: "0.9rem"
+                                }}>
+                                    {question.label}
+                                </label>
+                                {question.type === "textarea" ? (
                                     <textarea
                                         value={formValues[question.key]}
                                         onChange={(e) => updateFormValue(question.key, e.target.value)}
@@ -352,7 +361,8 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
                                             fontSize: "0.9rem",
                                             minHeight: "80px",
                                             resize: "vertical",
-                                            boxSizing: "border-box"
+                                            boxSizing: "border-box",
+                                            marginBottom: "0.75rem"
                                         }}
                                     />
                                 ) : (
@@ -370,17 +380,38 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
                                             color: "#f8fafc",
                                             fontFamily: "inherit",
                                             fontSize: "0.9rem",
-                                            boxSizing: "border-box"
+                                            boxSizing: "border-box",
+                                            marginBottom: "0.75rem"
                                         }}
                                     />
-                                )
-                            )}
-                        </div>
-                    ))}
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
 
-                {/* Generate with AI Button */}
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                {/* Footer with Advanced Mode Toggle (left) and Generate Button (right) */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", marginTop: "0.5rem" }}>
+                    {/* Advanced Mode Toggle - Left */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <input
+                            type="checkbox"
+                            id="advancedMode"
+                            checked={advancedMode}
+                            onChange={(e) => setAdvancedMode(e.target.checked)}
+                            style={{
+                                width: "1.25rem",
+                                height: "1.25rem",
+                                cursor: "pointer",
+                                accentColor: "#3b82f6"
+                            }}
+                        />
+                        <label htmlFor="advancedMode" style={{ cursor: "pointer", fontSize: "0.9rem", fontWeight: "500" }}>
+                            Advanced Mode
+                        </label>
+                    </div>
+
+                    {/* Generate Button - Right */}
                     <button
                         onClick={handleGenerateWithAI}
                         disabled={generatingAI}
@@ -394,7 +425,6 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
                             fontSize: "0.95rem",
                             cursor: generatingAI ? "not-allowed" : "pointer",
                             transition: "all 0.3s",
-                            marginTop: "0.5rem",
                             opacity: generatingAI ? 0.7 : 1
                         }}
                         onMouseEnter={(e) => {
@@ -410,17 +440,6 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
                     >
                         {generatingAI ? "🔄 Generating..." : "✨ Generate with AI"}
                     </button>
-                    <span style={{
-                        fontSize: "0.8rem",
-                        color: environment === "test" ? "#f59e0b" : "#10b981",
-                        fontWeight: "600",
-                        padding: "0.5rem 0.75rem",
-                        borderRadius: "6px",
-                        backgroundColor: environment === "test" ? "rgba(245, 158, 11, 0.1)" : "rgba(16, 185, 129, 0.1)",
-                        marginTop: "0.5rem"
-                    }}>
-                        {environment === "test" ? "⚡ TEST MODE" : "✓ PRODUCTION"}
-                    </span>
                 </div>
             </div>
         </div>
