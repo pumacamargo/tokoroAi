@@ -56,7 +56,7 @@ export async function uploadAssetImage(projectId, assetId, file) {
 /**
  * Update asset with image URL in Firestore
  * @param {string} projectId - Project ID
- * @param {string} assetId - Asset ID
+ * @param {string} assetId - Asset ID (can be a local ID like "asset_0" or a Firestore doc ID)
  * @param {string} imageUrl - Download URL of the image
  */
 export async function updateAssetImageUrl(projectId, assetId, imageUrl) {
@@ -65,11 +65,41 @@ export async function updateAssetImageUrl(projectId, assetId, imageUrl) {
     }
 
     try {
-        const assetRef = doc(db, "assets", assetId);
-        await updateDoc(assetRef, {
+        // If assetId is a local ID (asset_0, asset_1, etc), find the actual Firestore document
+        let actualAssetId = assetId;
+        let assetData = null;
+
+        if (assetId.startsWith("asset_")) {
+            // Extract the index from the local ID
+            const assetIndex = parseInt(assetId.split("_")[1]);
+
+            // Get assets for this project to find the correct one
+            const { getProjectAssets } = await import("./assetsService.js");
+            const assets = await getProjectAssets(projectId);
+
+            if (assets.length > assetIndex && assetIndex >= 0) {
+                assetData = assets[assetIndex];
+                actualAssetId = assetData.id;
+            } else {
+                throw new Error(`Asset at index ${assetIndex} not found`);
+            }
+        }
+
+        const assetRef = doc(db, "assets", actualAssetId);
+
+        // Include userId and projectId to satisfy Firestore rules
+        const updateData = {
             imageUrl: imageUrl,
             imageUploadedAt: new Date().toISOString()
-        });
+        };
+
+        // Add userId and projectId if we have them
+        if (assetData) {
+            updateData.userId = assetData.userId;
+            updateData.projectId = assetData.projectId;
+        }
+
+        await updateDoc(assetRef, updateData);
         console.log("Asset image URL updated in Firestore");
     } catch (error) {
         console.error("Error updating asset image URL:", error);
@@ -114,6 +144,57 @@ export async function uploadAndUpdateAssetImage(projectId, assetId, file) {
         return imageUrl;
     } catch (error) {
         console.error("Error in uploadAndUpdateAssetImage:", error);
+        throw error;
+    }
+}
+
+/**
+ * Download image from URL and save to Firebase Storage
+ * @param {string} projectId - Project ID
+ * @param {string} assetId - Asset ID
+ * @param {string} imageUrl - URL of the image to download
+ * @returns {Promise<string>} - Download URL of the saved image in Firebase
+ */
+export async function downloadAndSaveGeneratedImage(projectId, assetId, imageUrl) {
+    if (!auth.currentUser) {
+        throw new Error("User must be authenticated to save images");
+    }
+
+    if (!imageUrl) {
+        throw new Error("Image URL is required");
+    }
+
+    try {
+        console.log("Downloading image from:", imageUrl);
+
+        // Fetch the image from the URL
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.statusText}`);
+        }
+
+        // Get the image as a blob
+        const blob = await response.blob();
+        console.log("Image downloaded, size:", blob.size, "bytes");
+
+        // Create storage path
+        const fileName = `${Date.now()}-generated-${Math.random().toString(36).substr(2, 9)}.jpeg`;
+        const storagePath = `projects/${projectId}/assets/${assetId}/${fileName}`;
+        const storageRef = ref(storage, storagePath);
+
+        console.log("Uploading image to:", storagePath);
+
+        // Upload the blob to Firebase Storage
+        const snapshot = await uploadBytes(storageRef, blob);
+        console.log("Image uploaded successfully:", snapshot.fullPath);
+
+        // Get download URL
+        const downloadURL = await getDownloadURL(storageRef);
+        console.log("Download URL:", downloadURL);
+
+        return downloadURL;
+    } catch (error) {
+        console.error("Error downloading and saving generated image:", error);
         throw error;
     }
 }

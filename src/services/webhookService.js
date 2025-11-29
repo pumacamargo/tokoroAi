@@ -12,6 +12,14 @@ const WEBHOOKS = {
         production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genImages",
         test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genImages"
     },
+    assetImageGeneration: {
+        production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genImage",
+        test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genImage"
+    },
+    nanoImageGeneration: {
+        production: "https://n8n.lemonsushi.com/webhook/tokoroAi_nano_genImage",
+        test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_nano_genImage"
+    },
     videoGeneration: {
         production: "https://n8n.lemonsushi.com/webhook/tokoroAi_genVideo",
         test: "https://n8n.lemonsushi.com/webhook-test/tokoroAi_genVideo"
@@ -51,15 +59,41 @@ export const getWebhookUrl = (stepId, environment = "production") => {
 };
 
 /**
+ * Get the webhook URL by step key name
+ * @param {string} stepKey - The step key name (e.g., "assetImageGeneration")
+ * @param {string} environment - "production" or "test"
+ * @returns {string} The webhook URL
+ */
+export const getWebhookUrlByKey = (stepKey, environment = "production") => {
+    if (!WEBHOOKS[stepKey]) {
+        throw new Error(`No webhook configured for step key ${stepKey}`);
+    }
+
+    const webhook = WEBHOOKS[stepKey][environment];
+    if (!webhook) {
+        throw new Error(`No ${environment} webhook configured for step key ${stepKey}`);
+    }
+
+    return webhook;
+};
+
+/**
  * Send form data to n8n webhook
- * @param {number} stepId - The step ID (1-5)
+ * @param {number|string} stepId - The step ID (1-5) or step key name (e.g., "assetImageGeneration")
  * @param {object} formData - The form values to send
  * @param {string} environment - "production" or "test"
  * @returns {Promise} Promise with the webhook response
  */
 export const sendToWebhook = async (stepId, formData, environment = "production") => {
     try {
-        const webhookUrl = getWebhookUrl(stepId, environment);
+        let webhookUrl;
+
+        // If stepId is a string, use getWebhookUrlByKey; otherwise use getWebhookUrl
+        if (typeof stepId === "string") {
+            webhookUrl = getWebhookUrlByKey(stepId, environment);
+        } else {
+            webhookUrl = getWebhookUrl(stepId, environment);
+        }
 
         const response = await fetch(webhookUrl, {
             method: "POST",

@@ -173,3 +173,29 @@ h1 {
 .mb-4 { margin-bottom: 1rem; }
 .flex-center { display: flex; justify-content: center; align-items: center; }
 .w-full { width: 100%; }
+
+/* Global Scrollbar Styles */
+/* Webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.4);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.6);
+}
+
+/* Firefox */
+* {
+  scrollbar-color: rgba(59, 130, 246, 0.4) transparent;
+  scrollbar-width: thin;
+}
