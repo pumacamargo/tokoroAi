@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import ScriptEditor from "./ScriptEditor";
 import AssetDirectionEditor from "./AssetDirectionEditor";
 import AIGenerationForm from "./AIGenerationForm";
+import ScriptImageGenerationEditor from "./ScriptImageGenerationEditor";
 
 // Define questions and templates for each step
 const STEP_CONFIGS = {
@@ -63,6 +64,7 @@ const STEP_CONFIGS = {
 export default function ProjectWorkflow({ projectId }) {
     const [activeStep, setActiveStep] = useState(1);
     const [scriptContent, setScriptContent] = useState("");
+    const [scripts, setScripts] = useState([]); // Scripts shared across all sections
     const [aiGenerationEnabled, setAiGenerationEnabled] = useState({
         1: false, // Script
         2: false, // Art Direction
@@ -89,7 +91,7 @@ export default function ProjectWorkflow({ projectId }) {
         }));
     };
 
-    const handleGeneratedContent = (generatedText) => {
+    const handleGeneratedContent = useCallback((generatedText) => {
         // For step 1 (Script), pass the content to the ScriptEditor
         if (activeStep === 1 && scriptEditorRef.current) {
             scriptEditorRef.current.addGeneratedContent(generatedText);
@@ -99,11 +101,16 @@ export default function ProjectWorkflow({ projectId }) {
             assetDirectionEditorRef.current.addGeneratedContent(generatedText);
         }
         // TODO: Add handlers for other steps
-    };
+    }, [activeStep]);
 
-    // Update scriptContent whenever we leave Script view (activeStep changes from 1)
+    const handleScriptUpdate = useCallback((updatedScripts) => {
+        // When scripts are updated in child components, update the shared state
+        setScripts(updatedScripts);
+    }, []);
+
+    // Update scriptContent when we change steps (only for script content)
     React.useEffect(() => {
-        if (activeStep !== 1 && scriptEditorRef.current) {
+        if (scriptEditorRef.current && activeStep === 1) {
             const content = scriptEditorRef.current.getScriptContent?.();
             if (content) {
                 setScriptContent(content);
@@ -222,7 +229,7 @@ export default function ProjectWorkflow({ projectId }) {
 
             {/* SECCIÓN 3: DETALLES DEL PASO */}
             {activeStep === 1 ? (
-                <ScriptEditor ref={scriptEditorRef} projectId={projectId} />
+                <ScriptEditor ref={scriptEditorRef} projectId={projectId} onScriptsUpdate={handleScriptUpdate} />
             ) : activeStep === 2 ? (
                 <AssetDirectionEditor ref={assetDirectionEditorRef} projectId={projectId} />
             ) : (
@@ -231,6 +238,14 @@ export default function ProjectWorkflow({ projectId }) {
                         {steps.find(s => s.id === activeStep)?.label}
                     </h3>
                     <div className="card">
+                        {(activeStep === 3 || activeStep === 4 || activeStep === 5) && (
+                            <ScriptImageGenerationEditor
+                                stepId={activeStep}
+                                projectId={projectId}
+                                scripts={scripts}
+                                onScriptUpdate={handleScriptUpdate}
+                            />
+                        )}
                     </div>
                 </>
             )}

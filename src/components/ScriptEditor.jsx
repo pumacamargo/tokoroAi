@@ -3,7 +3,7 @@ import { saveShotsForProject, getProjectShots } from "../services/shotsService";
 import { auth } from "../firebase";
 
 const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
-    const { projectId } = props;
+    const { projectId, onScriptsUpdate } = props;
 
     // Initialize fullText from Firestore or use default
     const initializeFullText = () => {
@@ -53,6 +53,21 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
         },
         getScriptContent: () => {
             return fullText;
+        },
+        getShots: () => {
+            // Return shots as objects with content and other properties
+            const nonEmptyShots = displayShots.filter(shot => shot.trim() !== "");
+            return nonEmptyShots.map((shot, index) => ({
+                content: shot,
+                script: shot,
+                prompt: "",
+                image: null,
+                artDirection: "",
+                images: [],
+                videos: [],
+                sounds: [],
+                order: index
+            }));
         }
     }));
 
@@ -61,6 +76,30 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
 
     // Para el contador, contar solo los no vacíos
     const shots = displayShots.filter(shot => shot.trim() !== "");
+
+    // Helper function to generate shots objects
+    const generateShots = () => {
+        const nonEmptyShots = displayShots.filter(shot => shot.trim() !== "");
+        return nonEmptyShots.map((shot, index) => ({
+            content: shot,
+            script: shot,
+            prompt: "",
+            image: null,
+            artDirection: "",
+            images: [],
+            videos: [],
+            sounds: [],
+            order: index
+        }));
+    };
+
+    // Notify parent component whenever fullText changes
+    useEffect(() => {
+        if (onScriptsUpdate) {
+            const updatedShots = generateShots();
+            onScriptsUpdate(updatedShots);
+        }
+    }, [fullText, onScriptsUpdate]);
 
     const handleTextChange = (newText) => {
         setFullText(newText);
