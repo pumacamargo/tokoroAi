@@ -90,17 +90,14 @@ export async function updateAssetImageUrl(projectId, assetId, imageUrl) {
         // Include userId and projectId to satisfy Firestore rules
         const updateData = {
             imageUrl: imageUrl,
-            imageUploadedAt: new Date().toISOString()
+            imageUploadedAt: new Date().toISOString(),
+            userId: auth.currentUser.uid,
+            projectId: projectId
         };
 
-        // Add userId and projectId if we have them
-        if (assetData) {
-            updateData.userId = assetData.userId;
-            updateData.projectId = assetData.projectId;
-        }
-
+        console.log("Updating asset with ID:", actualAssetId, "imageUrl:", imageUrl);
         await updateDoc(assetRef, updateData);
-        console.log("Asset image URL updated in Firestore");
+        console.log("Asset image URL updated in Firestore successfully");
     } catch (error) {
         console.error("Error updating asset image URL:", error);
         throw error;

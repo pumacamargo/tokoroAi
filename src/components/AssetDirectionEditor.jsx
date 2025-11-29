@@ -408,8 +408,14 @@ const AssetDirectionEditor = forwardRef(function AssetDirectionEditor(props, ref
                 // Update the asset images state
                 setAssetImages(prev => ({ ...prev, [index]: firebaseImageUrl }));
 
-                // Update asset in Firestore with the Firebase image URL
-                await updateAssetImageUrl(projectId, `asset_${index}`, firebaseImageUrl);
+                // Get the real Firestore asset ID from firestoreAssets
+                const realAssetId = firestoreAssets[index]?.id;
+                if (realAssetId) {
+                    // Update asset in Firestore with the Firebase image URL using the real ID
+                    await updateAssetImageUrl(projectId, realAssetId, firebaseImageUrl);
+                } else {
+                    console.warn("Could not find real asset ID for index:", index);
+                }
 
                 console.log("Image saved and asset updated successfully");
                 alert("Image generated and saved successfully!");

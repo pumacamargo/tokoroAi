@@ -4,8 +4,9 @@ import { sendToWebhook } from "../services/webhookService";
 import { useEnvironment } from "../contexts/EnvironmentContext";
 import { auth } from "../firebase";
 
-export default function AIGenerationForm({ stepId, stepLabel, questions, defaultTemplates = [], onGeneratedContent = null }) {
+export default function AIGenerationForm({ stepId, stepLabel, questions, defaultTemplates = [], onGeneratedContent = null, scriptContent = null }) {
     const { environment } = useEnvironment();
+    const initializeRef = React.useRef(false);
 
     const [expandedQuestions, setExpandedQuestions] = useState(
         questions.reduce((acc, q) => {
@@ -31,6 +32,23 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
     const [generateError, setGenerateError] = useState(null);
     const [advancedMode, setAdvancedMode] = useState(false);
 
+    // Reset form values and other state when stepId changes
+    useEffect(() => {
+        // Reset formValues to empty
+        setFormValues(
+            questions.reduce((acc, q) => {
+                acc[q.key] = "";
+                return acc;
+            }, {})
+        );
+        // Reset selected template
+        setSelectedTemplate(null);
+        // Reset advanced mode
+        setAdvancedMode(false);
+        // Reset initialization flag when step changes
+        initializeRef.current = false;
+    }, [stepId, questions]);
+
     // Subscribe to templates from Firestore and initialize defaults
     useEffect(() => {
         setLoading(true);
@@ -41,8 +59,9 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
             return;
         }
 
-        // Initialize default templates if they don't exist
-        if (defaultTemplates.length > 0) {
+        // Initialize default templates only once per component instance
+        if (defaultTemplates.length > 0 && !initializeRef.current) {
+            initializeRef.current = true;
             initializeDefaultTemplates(stepId, defaultTemplates).catch(err => {
                 console.error("Error initializing templates:", err);
             });
@@ -118,7 +137,17 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
         setGenerateError(null);
 
         try {
-            const response = await sendToWebhook(stepId, formValues, environment);
+            // Prepare data to send to webhook
+            let dataToSend = { ...formValues };
+
+            // If this is Art Direction (stepId 2) and scriptContent is available, include the script
+            if (stepId === 2 && scriptContent) {
+                console.log("Script content included:", scriptContent);
+                dataToSend.script = scriptContent;
+            }
+
+            console.log("Data being sent to webhook:", dataToSend);
+            const response = await sendToWebhook(stepId, dataToSend, environment);
 
             // Extract text content from the response
             let generatedText = "";
@@ -329,9 +358,8 @@ export default function AIGenerationForm({ stepId, stepLabel, questions, default
                 {/* Questions Section */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                     {questions.map(question => {
-                        // Hide Task, Example, Output unless advanced mode is on
-                        const hiddenInBasicMode = ["task", "example", "output"].includes(question.key);
-                        if (hiddenInBasicMode && !advancedMode) {
+                        // Hide advanced questions unless advanced mode is on
+                        if (question.advanced && !advancedMode) {
                             return null;
                         }
 

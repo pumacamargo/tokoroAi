@@ -33,7 +33,7 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
     const lastSavedRef = useRef(fullText);
     const [firestoreShots, setFirestoreShots] = useState([]);
 
-    // Expose method to add generated content
+    // Expose method to add generated content and get script content
     useImperativeHandle(ref, () => ({
         addGeneratedContent: (generatedText) => {
             // Split generated text by newlines and add as new shots
@@ -50,6 +50,9 @@ const ScriptEditor = forwardRef(function ScriptEditor(props, ref) {
             setFullText(updatedText);
             // Don't set lastSavedRef here - let the autosave useEffect detect the change
             // The autosave useEffect will trigger because fullText changed
+        },
+        getScriptContent: () => {
+            return fullText;
         }
     }));
 

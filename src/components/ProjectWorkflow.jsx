@@ -14,24 +14,16 @@ const STEP_CONFIGS = {
             { key: "example", label: "Structure", placeholder: "Enter structure...", type: "textarea", defaultOpen: false },
             { key: "output", label: "Output", placeholder: "Enter output specifications...", type: "textarea", defaultOpen: false }
         ],
-        defaultTemplates: [
-            { id: "script_1", name: "Short Form Video", data: { task: "Create engaging short form video script", numShots: "3-5", topic: "Entertainment", example: "TikTok style", output: "Video transcript with timestamps" } },
-            { id: "script_2", name: "Commercial", data: { task: "Write product commercial script", numShots: "1", topic: "Product Marketing", example: "30-second ad", output: "Professional voiceover script" } }
-        ]
+        defaultTemplates: []
     },
     2: { // Art Direction
         label: "Art Direction",
         questions: [
-            { key: "style", label: "Visual Style", placeholder: "Describe the visual style...", type: "textarea", defaultOpen: false },
-            { key: "colorPalette", label: "Color Palette", placeholder: "Define color palette...", type: "text", highlight: true, defaultOpen: true },
-            { key: "mood", label: "Mood & Tone", placeholder: "Describe mood and tone...", type: "textarea", defaultOpen: false },
-            { key: "reference", label: "Reference Images", placeholder: "Enter reference style...", type: "text", defaultOpen: false },
-            { key: "guidelines", label: "Brand Guidelines", placeholder: "Brand specific requirements...", type: "textarea", defaultOpen: false }
+            { key: "task", label: "Task", placeholder: "Enter task description...", type: "textarea", defaultOpen: false, advanced: false },
+            { key: "example", label: "Structure", placeholder: "Enter structure...", type: "textarea", highlight: true, defaultOpen: true, advanced: false },
+            { key: "output", label: "Output", placeholder: "Enter output specifications...", type: "textarea", defaultOpen: false, advanced: true }
         ],
-        defaultTemplates: [
-            { id: "art_1", name: "Modern Minimal", data: { style: "Clean and minimalist", colorPalette: "Blue, white, gray", mood: "Professional and modern", reference: "Flat design", guidelines: "Contemporary branding" } },
-            { id: "art_2", name: "Vibrant Colorful", data: { style: "Bold and vibrant", colorPalette: "Bright multi-color", mood: "Fun and energetic", reference: "Pop art style", guidelines: "Youth-oriented" } }
-        ]
+        defaultTemplates: []
     },
     3: { // Image Generation
         label: "Image Generation",
@@ -42,10 +34,7 @@ const STEP_CONFIGS = {
             { key: "lighting", label: "Lighting", placeholder: "Lighting conditions...", type: "text", defaultOpen: false },
             { key: "requirements", label: "Special Requirements", placeholder: "Any specific requirements...", type: "textarea", defaultOpen: false }
         ],
-        defaultTemplates: [
-            { id: "img_1", name: "Product Shot", data: { subject: "Professional product photography", resolution: "1080x1080", style: "Studio", lighting: "Bright studio lighting", requirements: "White background" } },
-            { id: "img_2", name: "Landscape", data: { subject: "Beautiful landscape", resolution: "1920x1080", style: "Photorealistic", lighting: "Golden hour", requirements: "Natural scenery" } }
-        ]
+        defaultTemplates: []
     },
     4: { // Video Generation
         label: "Video Generation",
@@ -56,9 +45,7 @@ const STEP_CONFIGS = {
             { key: "music", label: "Music & Sound", placeholder: "Audio requirements...", type: "text", defaultOpen: false },
             { key: "transitions", label: "Transitions & Effects", placeholder: "Special effects needed...", type: "textarea", defaultOpen: false }
         ],
-        defaultTemplates: [
-            { id: "vid_1", name: "Promotional Video", data: { description: "Product promotional video", duration: "30", movement: "Smooth pans and zooms", music: "Upbeat background music", transitions: "Fade transitions" } }
-        ]
+        defaultTemplates: []
     },
     5: { // SoundFX
         label: "SoundFX",
@@ -69,14 +56,13 @@ const STEP_CONFIGS = {
             { key: "tone", label: "Tone & Mood", placeholder: "Sound tone and mood...", type: "text", defaultOpen: false },
             { key: "intensity", label: "Intensity Level", placeholder: "Volume and intensity level...", type: "text", defaultOpen: false }
         ],
-        defaultTemplates: [
-            { id: "sound_1", name: "Dramatic Impact", data: { description: "Dramatic sound effect", type: "Impact", duration: "2", tone: "Intense and powerful", intensity: "High" } }
-        ]
+        defaultTemplates: []
     }
 };
 
 export default function ProjectWorkflow({ projectId }) {
     const [activeStep, setActiveStep] = useState(1);
+    const [scriptContent, setScriptContent] = useState("");
     const [aiGenerationEnabled, setAiGenerationEnabled] = useState({
         1: false, // Script
         2: false, // Art Direction
@@ -115,6 +101,15 @@ export default function ProjectWorkflow({ projectId }) {
         // TODO: Add handlers for other steps
     };
 
+    // Update scriptContent whenever we leave Script view (activeStep changes from 1)
+    React.useEffect(() => {
+        if (activeStep !== 1 && scriptEditorRef.current) {
+            const content = scriptEditorRef.current.getScriptContent?.();
+            if (content) {
+                setScriptContent(content);
+            }
+        }
+    }, [activeStep]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -219,6 +214,7 @@ export default function ProjectWorkflow({ projectId }) {
                             questions={STEP_CONFIGS[activeStep].questions}
                             defaultTemplates={STEP_CONFIGS[activeStep].defaultTemplates}
                             onGeneratedContent={handleGeneratedContent}
+                            scriptContent={scriptContent}
                         />
                     )}
                 </>
@@ -230,47 +226,13 @@ export default function ProjectWorkflow({ projectId }) {
             ) : activeStep === 2 ? (
                 <AssetDirectionEditor ref={assetDirectionEditorRef} projectId={projectId} />
             ) : (
-                <div className="card">
-                    <h3 style={{ marginBottom: "1rem", fontSize: "1rem" }}>
+                <>
+                    <h3 style={{ marginBottom: "0.75rem", fontSize: "1rem", marginTop: 0 }}>
                         {steps.find(s => s.id === activeStep)?.label}
                     </h3>
-
-                    {/* Contenido por paso */}
-                    <div style={{ color: "#cbd5e1" }}>
-                        {activeStep === 3 && (
-                            <div>
-                                <p>Generate images using AI models</p>
-                                <p style={{ fontSize: "0.9rem", color: "#94a3b8", marginTop: "0.5rem" }}>
-                                    Create high-quality images based on your direction and prompts.
-                                </p>
-                            </div>
-                        )}
-                        {activeStep === 4 && (
-                            <div>
-                                <p>Create video content from images and sequences</p>
-                                <p style={{ fontSize: "0.9rem", color: "#94a3b8", marginTop: "0.5rem" }}>
-                                    Animate and combine images into dynamic video sequences.
-                                </p>
-                            </div>
-                        )}
-                        {activeStep === 5 && (
-                            <div>
-                                <p>Generate sound effects and audio using AI</p>
-                                <p style={{ fontSize: "0.9rem", color: "#94a3b8", marginTop: "0.5rem" }}>
-                                    Create immersive audio experiences with AI-generated sound effects.
-                                </p>
-                            </div>
-                        )}
-                        {activeStep === 6 && (
-                            <div>
-                                <p>Finalize and render your complete project</p>
-                                <p style={{ fontSize: "0.9rem", color: "#94a3b8", marginTop: "0.5rem" }}>
-                                    Combine all elements and export your finished production.
-                                </p>
-                            </div>
-                        )}
+                    <div className="card">
                     </div>
-                </div>
+                </>
             )}
         </div>
     );
